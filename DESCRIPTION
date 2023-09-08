@@ -13,6 +13,12 @@ Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Imports: 
-    stringr
+    dplyr,
+    lubridate,
+    magrittr,
+    rlang,
+    stringr,
+    tibble,
+    tidyr
 URL: https://github.com/DennisGoldfarb/Biochemistry
 BugReports: https://github.com/DennisGoldfarb/Biochemistry/issues

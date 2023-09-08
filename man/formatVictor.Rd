@@ -4,17 +4,18 @@
 \alias{formatVictor}
 \title{Read florescence data from PerkinElmer Victor and format it}
 \usage{
-formatVictor(path)
+formatVictor(path, delim = ",", tz = "US/Central")
 }
 \arguments{
 \item{path}{path to data file}
+
+\item{delim}{file delimiter}
+
+\item{tz}{time zone you want your datetimes to be in}
 }
 \value{
 list of metadata and measurement table
 }
 \description{
 Read florescence data from PerkinElmer Victor and format it
-}
-\examples{
-formatVictor("~/Downloads/BCA.txt")
 }
