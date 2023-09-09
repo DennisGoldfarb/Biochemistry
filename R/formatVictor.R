@@ -49,7 +49,8 @@ formatVictor <- function(path, delim=",", tz="US/Central")
 
   # extract concentration from standard
   data_standards <- data_standards %>%
-    tidyr::separate_wider_delim(.data$condition, " ", names=c("Condition", "Concentration"))
+    tidyr::separate_wider_delim(.data$condition, " ", names=c("condition", "concentration")) %>%
+    dplyr::mutate_at("concentration", as.numeric)
 
   # create list of results
   full_data <- list("standards" = data_standards,
