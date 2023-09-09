@@ -11,7 +11,14 @@
 #' @export
 fitStandardCurve <- function(data, method=c("linear", "quadratic"))
 {
-  fit <- lm(concentration ~ value, data=data)
-
+  ## evaluate choices
+  method <- match.arg(method)
+  if (method == "linear")
+  {
+    fit <- lm(concentration ~ value, data=data)
+  } else if (method == "quadratic")
+  {
+    fit <- lm(concentration ~ value + I(value^2), data=data)
+  }
   return(fit)
 }
