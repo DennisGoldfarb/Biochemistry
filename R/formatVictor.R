@@ -19,6 +19,7 @@ formatVictor <- function(path, delim=",", tz="US/Central")
   protocol_name <- stringr::str_split_i(str_data[3], delim, 2)
   protocol_created_date <- lubridate::as_datetime(stringr::str_split_i(str_data[34], delim, 5), tz=tz)
   protocol_created_by <- stringr::str_split_i(str_data[35], delim, 2)
+  wavelength <- stringr::str_split_i(str_data[54], delim, 2)
   measurement_started_date <- lubridate::as_datetime(stringr::str_split_i(str_data[5], delim, 5), tz=tz)
   plate_type <- stringr::str_split_i(str_data[42], delim, 2)
   plate_format <- stringr::str_split_i(str_data[43], delim, 2)
@@ -55,7 +56,10 @@ formatVictor <- function(path, delim=",", tz="US/Central")
   # create list of results
   full_data <- list("standards" = data_standards,
                     "samples" = data_samples,
+                    "path" = path,
+                    "file" = basename(path),
                     "measurements" = measurements,
+                    "wavelength" = wavelength,
                     "plate_map" = plate_map,
                     "protocol_name" = protocol_name,
                     "protocol_created_date" = protocol_created_date,

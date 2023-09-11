@@ -15,12 +15,10 @@ fitStandardCurve <- function(data, method=c("linear", "quadratic"))
   method <- match.arg(method)
   if (method == "linear")
   {
-    fit <- lm(concentration ~ value, data=data)
-    names(fit$coefficients) <- c("(Intercept)", "x")
+    fit <- lm(value ~ concentration, data=data$standards)
   } else if (method == "quadratic")
   {
-    fit <- lm(concentration ~ value + I(value^2), data=data)
-    names(fit$coefficients) <- c("(Intercept)", "x", "x^2")
+    fit <- lm(value ~ concentration + I(concentration^2), data=data$standards)
   }
   return(fit)
 }

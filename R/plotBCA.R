@@ -2,6 +2,7 @@
 #'
 #' @param data data from formatVictor
 #' @param fit standard curve model
+#' @param dilution dilution factor for samples
 #'
 #' @return
 #'
@@ -9,53 +10,105 @@
 #' @importFrom rlang .data
 #'
 #' @export
-plotBCA <- function(data, fit)
+plotBCA <- function(data, fit, dilution=1)
 {
-  fit_data <- data.frame(value = seq(0,max(data$standards$value),length.out=100))
-  fit_data$concentration <- predict(fit, fit_data)
-
-  # predict
-  data$samples$concentration <- predict(fit, data$samples)
+  fit_data <- data.frame(concentration = seq(0,max(data$standards$concentration),length.out=100))
+  fit_data <- cbind(fit_data, investr::predFit(fit, fit_data, interval="confidence", level=0.95))
+  confidence_bounds_standard <- data.frame(x = c(fit_data$concentration, rev(fit_data$concentration)),
+                                           y = c(fit_data$lwr, rev(fit_data$upr)))
 
   # annotations
   Rsquared <- sprintf("%.4f", summary(fit)$adj.r.squared)
 
+  # determine if model is multi regression or nonlinear
+  multi <- length(names(fit$coef)[-1]) > 1
+
   # take average
   sample_data_final <- data$samples %>%
-    dplyr::group_by(.data$condition) %>%
-    dplyr::summarize(concentration = mean(concentration))
+    dplyr::group_by(.data$condition)
 
-  p <- (ggplot2::ggplot(data$standards, aes(y=concentration, x=value))
-        + geom_line(data = fit_data, color="grey10")
-        + geom_point(color="grey10")
-        + geom_point(data = data$samples, aes(color=condition))
+  if (!multi) {
+    # inverse predict linear
+    sample_data_final <- sample_data_final %>%
+      dplyr::summarize(descr = as.data.frame(calibrate(fit, y0 = value, interval = "inversion", level = 0.95)[1:3])) %>%
+      tidyr::unpack(cols = descr)
+  } else {
+    # inverse predict nonlinear
+    sample_data_final <- sample_data_final %>%
+      dplyr::summarize(descr = as.data.frame(invest(fit, y0 = value, interval = "inversion", level = 0.95)[1:3])) %>%
+      tidyr::unpack(cols = descr)
+  }
 
-        + annotate("text", x=0, y=max(data$standards$value), hjust = 0, vjust=0,
-                   label = stringr::str_c("y * ' = ' * ", .regEq(fit,4)), parse=T, size = 3)
-        + annotate("text", x=0, y=max(data$standards$value)*0.95, hjust = 0, vjust=0,
-                   label = stringr::str_c("italic(R) ^ 2 * ' = ' * ", Rsquared), parse=T, size = 3)
+  annotation_data <- data.frame(label = c(stringr::str_c("y * ' = ' * ", .regEq(fit,4)),
+                                          stringr::str_c("italic(R) ^ 2 * ' = ' * ", Rsquared)),
+                                condition = "Standard",
+                                x = 0,
+                                y = c(max(data$standards$value),
+                                      max(data$standards$value)*0.95))
+  sample_annotations <- data.frame(label = c(stringr::str_c("Estimate: ",
+                                                            format(sample_data_final$estimate, digits=3),
+                                                            " * ", dilution, "x dilution = ",
+                                                            format(sample_data_final$estimate*dilution, digits=3), " mg/mL"),
+                                             stringr::str_c("95% CI: [",
+                                                            format(sample_data_final$lower, digits=3), ", ",
+                                                            format(sample_data_final$upper, digits=3), "] ",
+                                                            " * ", dilution, "x = [",
+                                                            format(sample_data_final$lower*dilution, digits=3),", ",
+                                                            format(sample_data_final$upper*dilution, digits=3),
+                                                            "] mg/mL")),
+                                   condition = sample_data_final$condition,
+                                   x = 0,
+                                   y = c(max(data$standards$value),
+                                         max(data$standards$value)*0.95))
+  #annotation_data <- rbind(annotation_data, sample_annotations)
 
-        + ggtitle("BCA Standard Curve")
-        + labs(color='Sample')
-        + xlab("Flourescence")
-        + ylab("Concentration (mg/mL)")
 
-        + theme(panel.background = element_blank(),
-                panel.grid.minor = element_blank(),
-                panel.grid.major = element_line(colour="grey95"),
-                axis.line.x.bottom = element_line(colour="grey10"),
-                axis.line.y.left = element_line(colour="grey10"),
+
+  p <- (ggplot2::ggplot(data$standards, ggplot2::aes(x=concentration, y=value))
+        + ggplot2::geom_rect(data=sample_data_final,
+                             fill="#fbb4ae",
+                             alpha=0.5,
+                             ggplot2::aes(NULL, NULL, xmin=lower, ymin=-Inf, xmax=upper, ymax=Inf))
+        + ggplot2::geom_vline(data = sample_data_final, ggplot2::aes(xintercept = estimate), linetype=3)
+        + ggplot2::geom_hline(data = data$samples, ggplot2::aes(yintercept = value), linetype=3)
+        + ggplot2::geom_polygon(data = confidence_bounds_standard, ggplot2::aes(x=x, y=y), fill="#b3cde3", alpha=0.5)
+        + ggplot2::geom_line(data = fit_data, ggplot2::aes(y=fit), color="grey10")
+
+        + ggplot2::geom_point(data = data$standards %>% dplyr::select(-condition), shape = 21, color="grey10")
+
+        + ggplot2::geom_text(data = annotation_data, ggplot2::aes(x=x, y=y, label=label), parse=T, hjust=0, vjust=0, size=3)
+        + ggplot2::geom_text(data = sample_annotations, ggplot2::aes(x=x, y=y, label=label), parse=F, hjust=0, vjust=0, size=3)
+
+        + ggplot2::facet_wrap(~ factor(condition, levels=c("Standard", levels(factor(data$samples$condition)))),
+                              scales="free_x")
+
+        + ggplot2::ggtitle("BCA Standard Curve")
+        + ggplot2::labs(color='Sample')
+        + ggplot2::ylab(stringr::str_c("Absorbance (", data$wavelength, ")"))
+        + ggplot2::xlab("Concentration (mg/mL)")
+
+        + ggplot2::theme(panel.background = ggplot2::element_blank(),
+                panel.grid.minor = ggplot2::element_blank(),
+                panel.grid.major = ggplot2::element_line(colour="grey95"),
+                axis.line.x.bottom = ggplot2::element_line(colour="grey10"),
+                axis.line.y.left = ggplot2::element_line(colour="grey10"),
                 aspect.ratio = 1)
         )
 
   print(p)
+  print(sample_data_final)
 }
 
 .regEq <- function(lmObj, dig) {
+  coef = c("x")
+  if (length(names(lmObj$coef)[-1]) == 2)
+  {
+    coef = c("x", "x^2")
+  }
   paste0(
      c(round(lmObj$coef[1], dig), round(sign(lmObj$coef[-1])*lmObj$coef[-1], dig)),
      c("", rep("*", length(lmObj$coef)-1)),
-     paste0(c("", names(lmObj$coef)[-1]), c(ifelse(sign(lmObj$coef)[-1]==1," + "," - "), "")),
+     paste0(c("", coef), c(ifelse(sign(lmObj$coef)[-1]==1," + "," - "), "")),
      collapse=""
    )
 }
