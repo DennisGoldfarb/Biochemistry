@@ -1,9 +1,9 @@
-#' Read florescence data from PerkinElmer Victor and format it
+#' Fit a model to standard curve data
 #'
 #' @param data table of standard measurements
 #' @param method type of fit
 #'
-#' @return
+#' @return a model fit
 #'
 #' @importFrom magrittr %>%
 #' @importFrom rlang .data
@@ -16,9 +16,11 @@ fitStandardCurve <- function(data, method=c("linear", "quadratic"))
   if (method == "linear")
   {
     fit <- lm(concentration ~ value, data=data)
+    names(fit$coefficients) <- c("(Intercept)", "x")
   } else if (method == "quadratic")
   {
     fit <- lm(concentration ~ value + I(value^2), data=data)
+    names(fit$coefficients) <- c("(Intercept)", "x", "x^2")
   }
   return(fit)
 }
