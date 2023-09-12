@@ -12,6 +12,56 @@
 #' @export
 plotBCA <- function(data, fit, dilution=1)
 {
+  p1 <- plotPlateMap(data)
+  p2 <- plotStandardCurve(data, fit, dilution)
+
+  num_conditions <- length(unique(data$samples$condition)) + 1
+  multi_plot <- ggpubr::ggarrange(p1,p2,
+                                  nrow=2,
+                                  heights = c(1, 2*+ceiling(num_conditions / 2))
+                                  )
+
+  print(multi_plot)
+
+}
+
+.regEq <- function(lmObj, dig) {
+  coef = c("x")
+  if (length(names(lmObj$coef)[-1]) == 2)
+  {
+    coef = c("x", "x^2")
+  }
+  paste0(
+     c(round(lmObj$coef[1], dig), round(sign(lmObj$coef[-1])*lmObj$coef[-1], dig)),
+     c("", rep("*", length(lmObj$coef)-1)),
+     paste0(c("", coef), c(ifelse(sign(lmObj$coef)[-1]==1," + "," - "), "")),
+     collapse=""
+   )
+}
+
+plotPlateMap <- function(data) {
+  ht <- ComplexHeatmap::Heatmap(data$measurements,
+                                cluster_rows = F,
+                                cluster_columns = F,
+                                column_names_rot = 0,
+                                row_names_side = "left",
+                                column_names_side = "top",
+                                col = colorRampPalette(RColorBrewer::brewer.pal(n = 7, name = "Purples"))(100),
+                                cell_fun = function(j, i, x, y, width, height, fill) {
+                                  grid.text(stringr::str_c(data$plate_map[i, j], "\n", format(data$measurements[i,j], digits=3)),
+                                            x, y, gp = gpar(fontsize = 6))
+                                },
+                                show_heatmap_legend = F
+                                )
+
+  p <- grid.grabExpr(draw(ht), height=2, width=3.5)
+  return(p)
+
+  #gb_heatmap = grid.grabExpr(draw(ht_list), height=3.5, width=2.5)
+}
+
+plotStandardCurve <- function(data, fit, dilution=1)
+{
   fit_data <- data.frame(concentration = seq(0,max(data$standards$concentration),length.out=100))
   fit_data <- cbind(fit_data, investr::predFit(fit, fit_data, interval="confidence", level=0.95))
   confidence_bounds_standard <- data.frame(x = c(fit_data$concentration, rev(fit_data$concentration)),
@@ -30,12 +80,12 @@ plotBCA <- function(data, fit, dilution=1)
   if (!multi) {
     # inverse predict linear
     sample_data_final <- sample_data_final %>%
-      dplyr::summarize(descr = as.data.frame(calibrate(fit, y0 = value, interval = "inversion", level = 0.95)[1:3])) %>%
+      dplyr::summarize(descr = as.data.frame(investr::calibrate(fit, y0 = value, interval = "inversion", level = 0.95)[1:3])) %>%
       tidyr::unpack(cols = descr)
   } else {
     # inverse predict nonlinear
     sample_data_final <- sample_data_final %>%
-      dplyr::summarize(descr = as.data.frame(invest(fit, y0 = value, interval = "inversion", level = 0.95)[1:3])) %>%
+      dplyr::summarize(descr = as.data.frame(investr::invest(fit, y0 = value, interval = "inversion", level = 0.95)[1:3])) %>%
       tidyr::unpack(cols = descr)
   }
 
@@ -88,27 +138,12 @@ plotBCA <- function(data, fit, dilution=1)
         + ggplot2::xlab("Concentration (mg/mL)")
 
         + ggplot2::theme(panel.background = ggplot2::element_blank(),
-                panel.grid.minor = ggplot2::element_blank(),
-                panel.grid.major = ggplot2::element_line(colour="grey95"),
-                axis.line.x.bottom = ggplot2::element_line(colour="grey10"),
-                axis.line.y.left = ggplot2::element_line(colour="grey10"),
-                aspect.ratio = 1)
-        )
+                         panel.grid.minor = ggplot2::element_blank(),
+                         panel.grid.major = ggplot2::element_line(colour="grey95"),
+                         axis.line.x.bottom = ggplot2::element_line(colour="grey10"),
+                         axis.line.y.left = ggplot2::element_line(colour="grey10"),
+                         aspect.ratio = 1)
+  )
 
-  print(p)
-  print(sample_data_final)
-}
-
-.regEq <- function(lmObj, dig) {
-  coef = c("x")
-  if (length(names(lmObj$coef)[-1]) == 2)
-  {
-    coef = c("x", "x^2")
-  }
-  paste0(
-     c(round(lmObj$coef[1], dig), round(sign(lmObj$coef[-1])*lmObj$coef[-1], dig)),
-     c("", rep("*", length(lmObj$coef)-1)),
-     paste0(c("", coef), c(ifelse(sign(lmObj$coef)[-1]==1," + "," - "), "")),
-     collapse=""
-   )
+  return(p)
 }

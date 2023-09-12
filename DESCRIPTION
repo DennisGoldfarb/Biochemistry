@@ -13,11 +13,15 @@ Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Imports: 
+    ComplexHeatmap,
     dplyr,
     ggplot2,
+    ggpubr,
+    gpubr,
     investr,
     lubridate,
     magrittr,
+    RColorBrewer,
     rlang,
     stringr,
     tibble,
