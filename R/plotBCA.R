@@ -35,7 +35,7 @@ plotBCA <- function(data, fit, dilution=1, desired_mg = 1, desired_units = "uL")
                                                                           ", Created on: ", data$protocol_created_date, "\n"),
                                                                    color = "grey10", face = "bold", size = 10))
 
-  print(multi_plot)
+  return(multi_plot)
 
 }
 
@@ -153,6 +153,6 @@ plotConcentrationTable <- function(data, fit, unit = "uL", desired_mg = 1)
     dplyr::relocate(`Corrected Estimate`, .after = `Corrected Upper`) %>%
     dplyr::mutate_if(is.numeric, round, 3)
   names(data)[ncol(data)] <- stringr::str_c("Volume (", unit, ") for ", desired_mg, " mg")
-  p <- gridExtra::tableGrob(data)
+  p <- gridExtra::tableGrob(data, theme=gridExtra::ttheme_default(base_size=10))
   return(p)
 }
