@@ -10,16 +10,30 @@
 #' @importFrom rlang .data
 #'
 #' @export
-plotBCA <- function(data, fit, dilution=1)
+plotBCA <- function(data, fit, dilution=1, desired_mg = 1, desired_units = "uL")
 {
+  sampleCI <- getCI(data, fit, dilution=dilution, desired_mg=desired_mg, desired_units=desired_units)
   p1 <- plotPlateMap(data)
-  p2 <- plotStandardCurve(data, fit, dilution)
+  p2 <- plotStandardCurve(data, fit, dilution, sampleCI)
+  p3 <- plotConcentrationTable(sampleCI, fit, desired_units, desired_mg)
 
   num_conditions <- length(unique(data$samples$condition)) + 1
-  multi_plot <- ggpubr::ggarrange(p1,p2,
-                                  nrow=2,
-                                  heights = c(1, 2*+ceiling(num_conditions / 2))
+  multi_plot <- ggpubr::ggarrange(p3,p1,p2,
+                                  nrow=3,
+                                  heights = c(1, 1, 2*+ceiling(num_conditions / 2))
                                   )
+
+  multi_plot <- ggpubr::annotate_figure(multi_plot,
+                                        top = ggpubr::text_grob(str_c(data$path, "\n",
+                                                                "Measured on: ", data$measurement_started_date),
+                                                                color = "grey10", face = "bold", size = 10),
+                                        bottom = ggpubr::text_grob(str_c("Plate Type: ", data$plate_type,
+                                                                          ", Plate Format: ", data$plate_format,
+                                                                          ", Wavelength: ", data$wavelength, "\n",
+                                                                          "Protocol: ", data$protocol_name,
+                                                                          ", Created by: ", data$protocol_created_by,
+                                                                          ", Created on: ", data$protocol_created_date, "\n"),
+                                                                   color = "grey10", face = "bold", size = 10))
 
   print(multi_plot)
 
@@ -48,19 +62,17 @@ plotPlateMap <- function(data) {
                                 column_names_side = "top",
                                 col = colorRampPalette(RColorBrewer::brewer.pal(n = 7, name = "Purples"))(100),
                                 cell_fun = function(j, i, x, y, width, height, fill) {
-                                  grid.text(stringr::str_c(data$plate_map[i, j], "\n", format(data$measurements[i,j], digits=3)),
-                                            x, y, gp = gpar(fontsize = 6))
+                                  grid::grid.text(stringr::str_c(data$plate_map[i, j], "\n", format(data$measurements[i,j], digits=3)),
+                                            x, y, gp = grid::gpar(fontsize = 6))
                                 },
                                 show_heatmap_legend = F
                                 )
 
-  p <- grid.grabExpr(draw(ht), height=2, width=3.5)
+  p <- grid::grid.grabExpr(ComplexHeatmap::draw(ht))
   return(p)
-
-  #gb_heatmap = grid.grabExpr(draw(ht_list), height=3.5, width=2.5)
 }
 
-plotStandardCurve <- function(data, fit, dilution=1)
+plotStandardCurve <- function(data, fit, dilution=1, sampleCI)
 {
   fit_data <- data.frame(concentration = seq(0,max(data$standards$concentration),length.out=100))
   fit_data <- cbind(fit_data, investr::predFit(fit, fit_data, interval="confidence", level=0.95))
@@ -73,22 +85,6 @@ plotStandardCurve <- function(data, fit, dilution=1)
   # determine if model is multi regression or nonlinear
   multi <- length(names(fit$coef)[-1]) > 1
 
-  # take average
-  sample_data_final <- data$samples %>%
-    dplyr::group_by(.data$condition)
-
-  if (!multi) {
-    # inverse predict linear
-    sample_data_final <- sample_data_final %>%
-      dplyr::summarize(descr = as.data.frame(investr::calibrate(fit, y0 = value, interval = "inversion", level = 0.95)[1:3])) %>%
-      tidyr::unpack(cols = descr)
-  } else {
-    # inverse predict nonlinear
-    sample_data_final <- sample_data_final %>%
-      dplyr::summarize(descr = as.data.frame(investr::invest(fit, y0 = value, interval = "inversion", level = 0.95)[1:3])) %>%
-      tidyr::unpack(cols = descr)
-  }
-
   annotation_data <- data.frame(label = c(stringr::str_c("y * ' = ' * ", .regEq(fit,4)),
                                           stringr::str_c("italic(R) ^ 2 * ' = ' * ", Rsquared)),
                                 condition = "Standard",
@@ -96,17 +92,17 @@ plotStandardCurve <- function(data, fit, dilution=1)
                                 y = c(max(data$standards$value),
                                       max(data$standards$value)*0.95))
   sample_annotations <- data.frame(label = c(stringr::str_c("Estimate: ",
-                                                            format(sample_data_final$estimate, digits=3),
+                                                            format(sampleCI$estimate, digits=3),
                                                             " * ", dilution, "x dilution = ",
-                                                            format(sample_data_final$estimate*dilution, digits=3), " mg/mL"),
+                                                            format(sampleCI$`Corrected estimate`, digits=3), " mg/mL"),
                                              stringr::str_c("95% CI: [",
-                                                            format(sample_data_final$lower, digits=3), ", ",
-                                                            format(sample_data_final$upper, digits=3), "] ",
+                                                            format(sampleCI$lower, digits=3), ", ",
+                                                            format(sampleCI$upper, digits=3), "] ",
                                                             " * ", dilution, "x = [",
-                                                            format(sample_data_final$lower*dilution, digits=3),", ",
-                                                            format(sample_data_final$upper*dilution, digits=3),
+                                                            format(sampleCI$`Corrected lower`, digits=3),", ",
+                                                            format(sampleCI$`Corrected upper`, digits=3),
                                                             "] mg/mL")),
-                                   condition = sample_data_final$condition,
+                                   condition = sampleCI$condition,
                                    x = 0,
                                    y = c(max(data$standards$value),
                                          max(data$standards$value)*0.95))
@@ -115,11 +111,11 @@ plotStandardCurve <- function(data, fit, dilution=1)
 
 
   p <- (ggplot2::ggplot(data$standards, ggplot2::aes(x=concentration, y=value))
-        + ggplot2::geom_rect(data=sample_data_final,
+        + ggplot2::geom_rect(data=sampleCI,
                              fill="#fbb4ae",
                              alpha=0.5,
                              ggplot2::aes(NULL, NULL, xmin=lower, ymin=-Inf, xmax=upper, ymax=Inf))
-        + ggplot2::geom_vline(data = sample_data_final, ggplot2::aes(xintercept = estimate), linetype=3)
+        + ggplot2::geom_vline(data = sampleCI, ggplot2::aes(xintercept = estimate), linetype=3)
         + ggplot2::geom_hline(data = data$samples, ggplot2::aes(yintercept = value), linetype=3)
         + ggplot2::geom_polygon(data = confidence_bounds_standard, ggplot2::aes(x=x, y=y), fill="#b3cde3", alpha=0.5)
         + ggplot2::geom_line(data = fit_data, ggplot2::aes(y=fit), color="grey10")
@@ -145,5 +141,18 @@ plotStandardCurve <- function(data, fit, dilution=1)
                          aspect.ratio = 1)
   )
 
+  return(p)
+}
+
+
+plotConcentrationTable <- function(data, fit, unit = "uL", desired_mg = 1)
+{
+  names(data) <- tools::toTitleCase(names(data))
+  data <- data %>%
+    dplyr::relocate(`Estimate`, .after = `Upper`) %>%
+    dplyr::relocate(`Corrected Estimate`, .after = `Corrected Upper`) %>%
+    dplyr::mutate_if(is.numeric, round, 3)
+  names(data)[ncol(data)] <- stringr::str_c("Volume (", unit, ") for ", desired_mg, " mg")
+  p <- gridExtra::tableGrob(data)
   return(p)
 }
